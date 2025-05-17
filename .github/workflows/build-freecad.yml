@@ -1,0 +1,79 @@
+name: Auto Build FreeCAD Docker
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # 每天凌晨 2 点检查
+  workflow_dispatch:      # 支持手动触发
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    env:
+      DOCKERHUB_REPO: wyxsg/freecad-python
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Get latest FreeCAD release version
+      id: get_version
+      run: |
+        latest=$(curl -s https://api.github.com/repos/FreeCAD/FreeCAD/releases/latest | jq -r .tag_name)
+        echo "Latest version: $latest"
+        echo "version=$latest" >> $GITHUB_OUTPUT
+
+    - name: Check last built version
+      id: check_last
+      run: |
+        if [ -f .last_version ]; then
+          last=$(cat .last_version)
+          echo "Last version: $last"
+        else
+          last="none"
+        fi
+        echo "last=$last" >> $GITHUB_OUTPUT
+
+    - name: Skip if no new version
+      if: steps.get_version.outputs.version == steps.check_last.outputs.last
+      run: echo "No new version. Skipping..."
+
+    - name: Download FreeCAD AppImage
+      if: steps.get_version.outputs.version != steps.check_last.outputs.last
+      run: |
+        version=${{ steps.get_version.outputs.version }}
+        url="https://github.com/FreeCAD/FreeCAD/releases/download/${version}/FreeCAD-${version}-Linux-x86_64.AppImage"
+        echo "Downloading $url"
+        curl -L $url -o FreeCAD.AppImage
+        chmod +x FreeCAD.AppImage
+
+    - name: Build Docker image
+      if: steps.get_version.outputs.version != steps.check_last.outputs.last
+      run: |
+        docker build -t $DOCKERHUB_REPO:${{ steps.get_version.outputs.version }} .
+
+    - name: Log in to Docker Hub
+      if: steps.get_version.outputs.version != steps.check_last.outputs.last
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Push Docker image
+      if: steps.get_version.outputs.version != steps.check_last.outputs.last
+      run: |
+        docker push $DOCKERHUB_REPO:${{ steps.get_version.outputs.version }}
+
+    - name: Update last version record
+      if: steps.get_version.outputs.version != steps.check_last.outputs.last
+      run: |
+        echo "${{ steps.get_version.outputs.version }}" > .last_version
+
+    - name: Commit .last_version
+      if: steps.get_version.outputs.version != steps.check_last.outputs.last
+      run: |
+        git config user.name "github-actions"
+        git config user.email "github-actions@users.noreply.github.com"
+        git add .last_version
+        git commit -m "Update last version to ${{ steps.get_version.outputs.version }}"
+        git push
