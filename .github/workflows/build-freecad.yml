@@ -5,6 +5,9 @@ on:
     - cron: '0 2 * * *'  # 每天凌晨 2 点检查
   workflow_dispatch:      # 支持手动触发
 
+permissions:
+  contents: write  # 👈 允许写入仓库（推送 .last_version）
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -18,6 +21,7 @@ jobs:
 
     - name: Get latest FreeCAD release version
       id: get_version
+      shell: bash
       run: |
         latest=$(curl -s https://api.github.com/repos/FreeCAD/FreeCAD/releases/latest | jq -r .tag_name)
         echo "Latest version: $latest"
@@ -25,6 +29,7 @@ jobs:
 
     - name: Check last built version
       id: check_last
+      shell: bash
       run: |
         if [ -f .last_version ]; then
           last=$(cat .last_version)
@@ -40,6 +45,7 @@ jobs:
 
     - name: Download FreeCAD AppImage
       if: steps.get_version.outputs.version != steps.check_last.outputs.last
+      shell: bash
       run: |
         version=${{ steps.get_version.outputs.version }}
         url="https://github.com/FreeCAD/FreeCAD/releases/download/${version}/FreeCAD-${version}-Linux-x86_64.AppImage"
@@ -64,12 +70,11 @@ jobs:
       run: |
         docker push $DOCKERHUB_REPO:${{ steps.get_version.outputs.version }}
 
-    - name: Update last version record
+    - name: Update .last_version file
       if: steps.get_version.outputs.version != steps.check_last.outputs.last
-      run: |
-        echo "${{ steps.get_version.outputs.version }}" > .last_version
+      run: echo "${{ steps.get_version.outputs.version }}" > .last_version
 
-    - name: Commit .last_version
+    - name: Commit and push .last_version
       if: steps.get_version.outputs.version != steps.check_last.outputs.last
       run: |
         git config user.name "github-actions"
