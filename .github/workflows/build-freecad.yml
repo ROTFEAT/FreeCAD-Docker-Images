@@ -15,6 +15,10 @@ jobs:
     steps:
     - name: Checkout repo
       uses: actions/checkout@v3
+      with:
+        # 明确指定使用 GH_PAT 进行 checkout，并设置获取深度
+        token: ${{ secrets.GH_PAT }}
+        fetch-depth: 0
 
     - name: Get latest FreeCAD release version
       id: get_version
@@ -74,12 +78,9 @@ jobs:
       if: steps.get_version.outputs.version != steps.check_last.outputs.last
       run: echo "${{ steps.get_version.outputs.version }}" > .last_version
 
-    - name: Commit and push .last_version
+    - name: Push changes
+      uses: stefanzweifel/git-auto-commit-action@v4
       if: steps.get_version.outputs.version != steps.check_last.outputs.last
-      run: |
-        git config user.name "github-actions"
-        git config user.email "github-actions@github.com"
-        git add .last_version
-        git commit -m "Update last version to ${{ steps.get_version.outputs.version }}"
-        # 使用您的自定义 GitHub Token
-        git push "https://x-access-token:${{ secrets.GH_PAT }}@github.com/${{ github.repository }}.git" HEAD:${{ github.ref }}
+      with:
+        commit_message: Update last version to ${{ steps.get_version.outputs.version }}
+        file_pattern: .last_version
