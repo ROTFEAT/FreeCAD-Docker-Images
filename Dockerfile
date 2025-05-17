@@ -1,15 +1,17 @@
-FROM ubuntu:24.04
+FROM ubuntu:22.04
 
-RUN apt update && apt install -y \
-    python3 \
-    python3-pip \
-    python3-venv \
-    wget \
-    && apt clean && rm -rf /var/lib/apt/lists/*
+# 安装 FreeCAD 所需运行依赖
+RUN apt-get update && apt-get install -y \
+    fuse xz-utils ca-certificates \
+    && apt-get clean
 
-COPY FreeCAD.AppImage /opt/FreeCAD.AppImage
-RUN chmod +x /opt/FreeCAD.AppImage && ln -s /opt/FreeCAD.AppImage /usr/local/bin/freecadcmd
+# 拷贝已解压的 FreeCAD 内容
+COPY squashfs-root/ /opt/freecad/
 
-ENV PYTHONPATH="/tmp/.mount_freeca*/usr/lib:$PYTHONPATH"
+# 设置 PATH，使 FreeCAD 自带 Python 成为默认解释器
+ENV PATH="/opt/freecad/usr/bin:$PATH"
 
-ENTRYPOINT ["/opt/FreeCAD.AppImage", "--console"]
+# 验证环境（可选）
+RUN python3 -c "import FreeCAD; print('✅ FreeCAD version:', FreeCAD.Version())"
+
+CMD ["python3"]
