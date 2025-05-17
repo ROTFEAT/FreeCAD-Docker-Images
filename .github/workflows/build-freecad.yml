@@ -5,9 +5,6 @@ on:
     - cron: '0 2 * * *'  # 每天凌晨 2 点检查
   workflow_dispatch:      # 支持手动触发
 
-permissions:
-  contents: write  # 👈 允许写入仓库（推送 .last_version）
-
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -69,6 +66,9 @@ jobs:
       if: steps.get_version.outputs.version != steps.check_last.outputs.last
       run: |
         docker push $DOCKERHUB_REPO:${{ steps.get_version.outputs.version }}
+        # 同时添加 latest 标签
+        docker tag $DOCKERHUB_REPO:${{ steps.get_version.outputs.version }} $DOCKERHUB_REPO:latest
+        docker push $DOCKERHUB_REPO:latest
 
     - name: Update .last_version file
       if: steps.get_version.outputs.version != steps.check_last.outputs.last
@@ -78,7 +78,8 @@ jobs:
       if: steps.get_version.outputs.version != steps.check_last.outputs.last
       run: |
         git config user.name "github-actions"
-        git config user.email "github-actions@users.noreply.github.com"
+        git config user.email "github-actions@github.com"
         git add .last_version
         git commit -m "Update last version to ${{ steps.get_version.outputs.version }}"
-        git push
+        # 使用您的自定义 GitHub Token
+        git push "https://x-access-token:${{ secrets.GH_PAT }}@github.com/${{ github.repository }}.git" HEAD:${{ github.ref }}
