@@ -15,7 +15,9 @@ WORKDIR /root
 COPY FreeCAD.AppImage .
 
 # 解压 AppImage
-RUN chmod +x FreeCAD.AppImage && ./FreeCAD.AppImage --appimage-extract
+RUN chmod +x FreeCAD.AppImage && ./FreeCAD.AppImage --appimage-extract \
+    && rm FreeCAD.AppImage \
+    #解压后删了
 
 # 下载并使用 AppImage 的 Python 安装 pip
 RUN wget --no-check-certificate https://bootstrap.pypa.io/get-pip.py && \
