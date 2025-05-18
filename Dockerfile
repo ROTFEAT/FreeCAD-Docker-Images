@@ -16,7 +16,7 @@ COPY FreeCAD.AppImage .
 
 # 解压 AppImage
 RUN chmod +x FreeCAD.AppImage && ./FreeCAD.AppImage --appimage-extract \
-    && rm FreeCAD.AppImage \
+    && rm FreeCAD.AppImage 
     #解压后删了
 
 # 下载并使用 AppImage 的 Python 安装 pip
@@ -34,8 +34,8 @@ RUN ln -sf /root/squashfs-root/usr/bin/python /usr/local/bin/python && \
 ENV PYTHONPATH=/root/squashfs-root/usr/lib/python3.11/site-packages:/root/squashfs-root/usr/lib:$PYTHONPATH
 ENV LD_LIBRARY_PATH=/root/squashfs-root/usr/lib:$LD_LIBRARY_PATH
 
-# 安装 Python 库
-RUN pip install fastapi uvicorn
-
-# 默认启动 Python（可改为 Web 服务入口）
-CMD ["python"]
+## 安装 Python 库
+#RUN pip install fastapi uvicorn
+#
+## 默认启动 Python（可改为 Web 服务入口）
+#CMD ["python"]
