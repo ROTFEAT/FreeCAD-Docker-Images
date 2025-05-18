@@ -1,36 +1,39 @@
 FROM ubuntu:22.04
 
-RUN apt-get update && apt-get install -y \
-    fuse xz-utils ca-certificates && \
-    apt-get clean
+ENV DEBIAN_FRONTEND=noninteractive
 
-# 把 Action 步骤解包好的 FreeCAD 拷进来
-COPY squashfs-root/ /opt/freecad/
+# 安装必要依赖
+RUN apt update && apt install -y \
+    fuse libgl1 libxrender1 libxext6 libfuse2 \
+    wget curl ca-certificates \
+    && apt clean
 
-# --- ① 侦测解释器并做软链 ---
-RUN set -e; \
-    # 1. 找真正的 python3* 可执行文件
-    pybin=$(find /opt/freecad -type f -name "python3*" -perm -111 | head -n1 || true); \
-    if [ -n "$pybin" ]; then \
-        echo "✅ found embedded python: $pybin"; \
-        ln -sf "$pybin" /usr/local/bin/python3; \
-    else \
-        # 2. 退化：把 FreeCADCmd 包装成 python3
-        fcadcmd=$(find /opt/freecad -type f -name "FreeCADCmd" -perm -111 | head -n1); \
-        echo "⚠️  python3 not found, fallback to FreeCADCmd: $fcadcmd"; \
-        echo '#!/bin/sh'                             >  /usr/local/bin/python3; \
-        echo "exec \"$fcadcmd\" \"\$@\""            >> /usr/local/bin/python3; \
-        chmod +x /usr/local/bin/python3; \
-    fi
+# 设置工作目录
+WORKDIR /root
 
-# --- ② PATH 中依旧保留原 FreeCAD bin 方便直接调用 ---
-ENV PATH="/opt/freecad/usr/bin:$PATH"
+# 复制已准备好的 AppImage 文件（由你通过 GitHub Actions 下载）
+COPY FreeCAD.AppImage .
 
-# --- ③ 构建阶段验证 ---
-RUN python3 - <<'PY'
-import sys, FreeCAD
-print("FreeCAD   :", FreeCAD.Version())
-print("Interpreter:", sys.executable)
-PY
+# 解压 AppImage
+RUN chmod +x FreeCAD.AppImage && ./FreeCAD.AppImage --appimage-extract
 
-CMD ["python3"]
+# 下载并使用 AppImage 的 Python 安装 pip
+RUN wget --no-check-certificate https://bootstrap.pypa.io/get-pip.py && \
+    ./squashfs-root/usr/bin/python get-pip.py && \
+    rm get-pip.py
+
+# 注册 AppImage 的 Python 为全局命令
+RUN ln -sf /root/squashfs-root/usr/bin/python /usr/local/bin/python && \
+    echo '#!/bin/bash' > /usr/local/bin/pip && \
+    echo '/root/squashfs-root/usr/bin/python -m pip "$@"' >> /usr/local/bin/pip && \
+    chmod +x /usr/local/bin/pip
+
+# 设置 FreeCAD 模块所需的路径
+ENV PYTHONPATH=/root/squashfs-root/usr/lib/python3.11/site-packages:/root/squashfs-root/usr/lib:$PYTHONPATH
+ENV LD_LIBRARY_PATH=/root/squashfs-root/usr/lib:$LD_LIBRARY_PATH
+
+# 安装 Python 库
+RUN pip install fastapi uvicorn
+
+# 默认启动 Python（可改为 Web 服务入口）
+CMD ["python"]
