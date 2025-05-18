@@ -2,11 +2,10 @@ name: Auto Build FreeCAD Docker
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]          # 推到 main 就构建
   schedule:
-    - cron: '0 2 1 * *'  # 每月1日凌晨2点运行
-  workflow_dispatch:
+    - cron:  '0 2 1 * *'      # 每月 1 日 02:00 UTC
+  workflow_dispatch:          # 手动触发
 
 jobs:
   build-and-push:
@@ -16,43 +15,47 @@ jobs:
       DOCKERHUB_REPO: wyxsg/freecad-python
 
     steps:
-    - name: Checkout repo
-      uses: actions/checkout@v3
+    # 1) 拉取代码
+    - uses: actions/checkout@v3
 
-    - name: Get latest FreeCAD release version
-      id: get_version
-      shell: bash
-      run: |
-        latest=$(curl -s https://api.github.com/repos/FreeCAD/FreeCAD/releases/latest | jq -r .tag_name)
-        echo "version=$latest" >> $GITHUB_OUTPUT
+    # 2) 安装 jq、curl（用来取版本 & URL）
+    - name: Install tools
+      run: sudo apt-get update && sudo apt-get install -y jq curl
 
-    - name: Get latest FreeCAD AppImage URL
-      id: get_appimage
-      shell: bash
+    # 3) 读取最新版本号
+    - name: Get latest FreeCAD version
+      id: ver
       run: |
-        response=$(curl -s https://api.github.com/repos/FreeCAD/FreeCAD/releases/latest)
-        version=$(echo "$response" | jq -r .tag_name)
-        url=$(echo "$response" | jq -r '.assets[] | select(.name | test("x86_64.*AppImage$")) | .browser_download_url')
-        echo "version=$version" >> $GITHUB_OUTPUT
-        echo "download_url=$url" >> $GITHUB_OUTPUT
+        echo "VERSION=$(curl -s https://api.github.com/repos/FreeCAD/FreeCAD/releases/latest | jq -r .tag_name)" >> $GITHUB_OUTPUT
 
-    - name: Download and extract FreeCAD AppImage
+    # 4) 拿到最新 x86_64 AppImage 下载链接
+    - name: Get AppImage URL
+      id: img
       run: |
-        curl -L "${{ steps.get_appimage.outputs.download_url }}" -o FreeCAD.AppImage
+        DL=$(curl -s https://api.github.com/repos/FreeCAD/FreeCAD/releases/latest | \
+             jq -r '.assets[] | select(.name|test("x86_64.*AppImage$")) | .browser_download_url')
+        echo "URL=$DL" >> $GITHUB_OUTPUT
+
+    # 5) 下载 AppImage（只下载 + chmod，可别解压）
+    - name: Download AppImage
+      run: |
+        curl -L "${{ steps.img.outputs.URL }}" -o FreeCAD.AppImage
         chmod +x FreeCAD.AppImage
-        ./FreeCAD.AppImage --appimage-extract
+        ls -lh FreeCAD.AppImage   # 看个大小日志
 
-    - name: Log in to Docker Hub
+    # 6) 登录 Docker Hub
+    - name: Login to Docker Hub
       uses: docker/login-action@v3
       with:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
 
-    - name: Build and push Docker image
+    # 7) 构建并推送镜像
+    - name: Build & Push
       uses: docker/build-push-action@v5
       with:
         context: .
         push: true
         tags: |
-          ${{ env.DOCKERHUB_REPO }}:${{ steps.get_version.outputs.version }}
+          ${{ env.DOCKERHUB_REPO }}:${{ steps.ver.outputs.VERSION }}
           ${{ env.DOCKERHUB_REPO }}:latest
